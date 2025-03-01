@@ -8,6 +8,7 @@ from kivy.lang import Builder
 from kivy.graphics import Color, RoundedRectangle
 from kivy.utils import get_color_from_hex
 from kivy.animation import Animation
+from kivy.uix.label import Label
 import json
 import os
 import random
@@ -144,6 +145,39 @@ BOT_RESPONSES = {
     }
 }
 
+# Custom Toast implementation
+class Toast(Label):
+    def __init__(self, text, duration=3, **kwargs):
+        super(Toast, self).__init__(**kwargs)
+        self.text = text
+        self.duration = duration
+        self.size_hint = (None, None)
+        self.height = 50
+        self.opacity = 0
+        self.background_color = (0.2, 0.2, 0.2, 0.9)
+        self.color = (1, 1, 1, 1)
+        self.padding = [20, 10]
+        self.bind(texture_size=self._update_size)
+        Window.bind(on_resize=self._update_pos)
+
+    def _update_size(self, instance, size):
+        self.width = size[0] + 40
+        self._update_pos()
+
+    def _update_pos(self, *args):
+        self.pos = (Window.width/2 - self.width/2, 100)
+
+    def show(self):
+        app = App.get_running_app()
+        app.root.add_widget(self)
+        anim = Animation(opacity=1, duration=0.3) + Animation(opacity=1, duration=self.duration) + Animation(opacity=0, duration=0.3)
+        anim.bind(on_complete=lambda *args: app.root.remove_widget(self))
+        anim.start(self)
+
+def show_toast(text, duration=3):
+    toast = Toast(text, duration)
+    toast.show()
+
 class WelcomeScreen(Screen):
     def on_enter(self):
         pass
@@ -257,24 +291,51 @@ class ForgotPasswordScreen(Screen):
         self.manager.current = 'login'
 
 class VerificationScreen(Screen):
-    verification_code = StringProperty(None)
-    phone = StringProperty('')
-    
-    def on_enter(self):
-        Clock.schedule_once(lambda dt: self.focus_code())
-    
-    def focus_code(self):
-        self.ids.code.focus = True
-        self.ids.code.bind(on_text_validate=lambda x: self.verify_code())
-    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.verification_code = None
+        self.countdown = 0
+        self.phone_number = None
+        Clock.schedule_interval(self.update_timer, 1)
+
+    def send_verification_code(self):
+        phone = self.ids.phone_number.text.strip()
+        if not phone:
+            return
+        
+        # Generate a random 6-digit code
+        self.verification_code = str(random.randint(100000, 999999))
+        self.phone_number = phone
+        
+        # Enable verification input and button
+        self.ids.verification_code.disabled = False
+        self.ids.verify_button.disabled = False
+        
+        # Start countdown timer (3 minutes)
+        self.countdown = 180
+        self.update_timer(0)
+        
+        # Show success message
+        show_toast(f"Verification code sent to {phone}")
+
+    def update_timer(self, dt):
+        if self.countdown > 0:
+            minutes = self.countdown // 60
+            seconds = self.countdown % 60
+            self.ids.timer_label.text = f'Resend code in {minutes:02d}:{seconds:02d}'
+            self.countdown -= 1
+        else:
+            self.ids.timer_label.text = ''
+
     def verify_code(self):
-        entered_code = self.ids.code.text.strip()
+        entered_code = self.ids.verification_code.text.strip()
         if entered_code == self.verification_code:
+            # Code is correct, proceed to new password screen
             self.manager.current = 'new_password'
         else:
-            self.ids.code.background_color = (0.8, 0.2, 0.2, 1)
-            self.ids.code.text = ""
-    
+            # Show error message
+            show_toast("Invalid verification code. Please try again.")
+
     def back_to_forgot(self):
         self.manager.current = 'forgot_password'
 
@@ -342,26 +403,58 @@ class BuyCreditsScreen(Screen):
     def __init__(self, **kwargs):
         super(BuyCreditsScreen, self).__init__(**kwargs)
         self.credit_packages = [
-            {'amount': 100, 'price': '10₺'},
-            {'amount': 250, 'price': '20₺'},
-            {'amount': 500, 'price': '35₺'},
-            {'amount': 1000, 'price': '60₺'}
+            {'amount': 100, 'price': '10₺', 'description': 'Başlangıç Paketi'},
+            {'amount': 250, 'price': '20₺', 'description': 'Standart Paket'},
+            {'amount': 500, 'price': '35₺', 'description': 'Premium Paket'},
+            {'amount': 1000, 'price': '60₺', 'description': 'VIP Paket'}
         ]
         self.selected_amount = 0
         self.selected_price = ''
+        self.warning_shown = False
+    
+    def on_enter(self):
+        # Reset form when entering the screen
+        self.reset_form()
+        if self.warning_shown:
+            self.ids.warning_label.opacity = 1
+    
+    def show_credit_warning(self):
+        self.warning_shown = True
+        self.ids.warning_label.opacity = 1
     
     def select_package(self, amount, price):
         self.selected_amount = amount
         self.selected_price = price
-        # Enable the payment form
+        
+        # Show the payment form
         self.ids.payment_form.opacity = 1
         self.ids.payment_form.disabled = False
+        
+        # Highlight selected package
+        for child in self.ids.packages_grid.children:
+            if hasattr(child, 'credits'):
+                if int(child.credits) == amount:
+                    child.background_color = (0.4, 0.5, 0.9, 1)
+                else:
+                    child.background_color = (0.15, 0.15, 0.3, 1)
+        
+        # Focus on card number input
+        Clock.schedule_once(lambda dt: self.focus_card_number())
+    
+    def focus_card_number(self):
+        self.ids.card_number.focus = True
     
     def validate_card(self):
-        card_number = self.ids.card_number.text.strip()
+        card_number = self.ids.card_number.text.strip().replace(' ', '')
         card_holder = self.ids.card_holder.text.strip()
         expiry_date = self.ids.expiry_date.text.strip()
         cvv = self.ids.cvv.text.strip()
+        
+        # Reset background colors
+        self.ids.card_number.background_color = (0.15, 0.15, 0.3, 1)
+        self.ids.card_holder.background_color = (0.15, 0.15, 0.3, 1)
+        self.ids.expiry_date.background_color = (0.15, 0.15, 0.3, 1)
+        self.ids.cvv.background_color = (0.15, 0.15, 0.3, 1)
         
         # Basic validation
         if not card_number or len(card_number) != 16 or not card_number.isdigit():
@@ -397,14 +490,30 @@ class BuyCreditsScreen(Screen):
         profile_screen.user_data['total_credits'] += self.selected_amount
         profile_screen.save_user_data()
         
-        # Reset form
+        # Show success message
+        self.ids.success_label.opacity = 1
+        Animation(opacity=0, duration=2).start(self.ids.success_label)
+        
+        # Reset form after delay
+        Clock.schedule_once(lambda dt: self.reset_form(), 2)
+        Clock.schedule_once(lambda dt: self.return_to_chat(), 2.5)
+    
+    def reset_form(self):
         self.ids.card_number.text = ''
         self.ids.card_holder.text = ''
         self.ids.expiry_date.text = ''
         self.ids.cvv.text = ''
         self.selected_amount = 0
         self.selected_price = ''
+        self.ids.payment_form.opacity = 0
+        self.ids.payment_form.disabled = True
         
+        # Reset package buttons
+        for child in self.ids.packages_grid.children:
+            if hasattr(child, 'credits'):
+                child.background_color = (0.15, 0.15, 0.3, 1)
+    
+    def return_to_chat(self):
         self.manager.current = 'chat'
     
     def on_text_validate(self, instance):
@@ -425,64 +534,96 @@ class BuyCreditsScreen(Screen):
     
     def format_card_number(self, instance, value):
         text = ''.join(filter(str.isdigit, value))[:16]
-        instance.text = text
+        formatted = ' '.join([text[i:i+4] for i in range(0, len(text), 4)]).strip()
+        instance.text = formatted
 
 class UserInfoScreen(Screen):
     def __init__(self, **kwargs):
         super(UserInfoScreen, self).__init__(**kwargs)
-        self.load_user_info()
     
-    def load_user_info(self):
-        if os.path.exists('user_info.json'):
-            with open('user_info.json', 'r') as f:
-                self.user_info = json.load(f)
-                if self.user_info:
-                    self.ids.name.text = self.user_info.get('name', '')
-                    self.ids.surname.text = self.user_info.get('surname', '')
-                    self.ids.age.text = str(self.user_info.get('age', ''))
-                    self.ids.phone.text = self.user_info.get('phone', '')
-                    self.ids.address.text = self.user_info.get('address', '')
+    def on_enter(self):
+        Clock.schedule_once(lambda dt: self.focus_first_field())
     
-    def save_user_info(self):
-        user_info = {
-            'name': self.ids.name.text.strip(),
-            'surname': self.ids.surname.text.strip(),
-            'age': self.ids.age.text.strip(),
-            'phone': self.ids.phone.text.strip(),
-            'address': self.ids.address.text.strip()
-        }
+    def focus_first_field(self):
+        self.ids.email.focus = True
+        # Bind Enter key events
+        self.ids.email.bind(on_text_validate=lambda x: self.focus_next('password'))
+        self.ids.password.bind(on_text_validate=lambda x: self.validate_and_continue())
+    
+    def focus_next(self, next_field):
+        self.ids[next_field].focus = True
+    
+    def validate_and_continue(self, *args):
+        email = self.ids.email.text.strip()
+        password = self.ids.password.text.strip()
+        
+        # Reset background colors
+        self.ids.email.background_color = (0.15, 0.15, 0.3, 1)
+        self.ids.password.background_color = (0.15, 0.15, 0.3, 1)
         
         # Basic validation
-        if not all([user_info['name'], user_info['surname'], user_info['age'], user_info['phone']]):
-            return False
+        if not email or '@' not in email:
+            self.ids.email.background_color = (0.8, 0.2, 0.2, 1)
+            return
         
-        with open('user_info.json', 'w') as f:
-            json.dump(user_info, f)
-        return True
+        if not password or len(password) < 6:
+            self.ids.password.background_color = (0.8, 0.2, 0.2, 1)
+            self.ids.password.text = ""
+            self.ids.password.hint_text = "Password must be at least 6 characters"
+            return
+        
+        # Save user data
+        user_data = {
+            'username': email.split('@')[0],
+            'email': email,
+            'total_credits': 50,
+            'messages_sent': 0
+        }
+        
+        with open('user_data.json', 'w') as f:
+            json.dump(user_data, f)
+        
+        # Update chat screen
+        chat_screen = self.manager.get_screen('chat')
+        chat_screen.username = user_data['username']
+        chat_screen.credits = user_data['total_credits']
+        chat_screen.save_credits()
+        
+        # Navigate to menu screen
+        self.manager.current = 'menu'
+
+class MenuScreen(Screen):
+    def __init__(self, **kwargs):
+        super(MenuScreen, self).__init__(**kwargs)
+        self.menu_items = [
+            {'text': 'Sohbete Başla', 'icon': 'assets/chat.png', 'screen': 'chat'},
+            {'text': 'Profil', 'icon': 'assets/user.png', 'screen': 'profile'},
+            {'text': 'Kredi Satın Al', 'icon': 'assets/coin.png', 'screen': 'buy_credits'},
+            {'text': 'Çıkış', 'icon': 'assets/logout.png', 'screen': 'login'}
+        ]
     
-    def validate_and_continue(self):
-        if self.save_user_info():
-            self.manager.current = 'chat'
-        else:
-            # Show error state on empty fields
-            for field_id in ['name', 'surname', 'age', 'phone']:
-                if not self.ids[field_id].text.strip():
-                    self.ids[field_id].background_color = (0.8, 0.2, 0.2, 1)
+    def navigate(self, screen_name):
+        self.manager.current = screen_name
+
+    def on_enter(self):
+        # Load user data and update credits display
+        try:
+            with open('user_data.json', 'r') as f:
+                user_data = json.load(f)
+                self.ids.credits_label.text = str(user_data.get('credits', 0))
+        except:
+            self.ids.credits_label.text = '0'
 
 class ChatScreen(Screen):
     credits = NumericProperty(50)
     username = StringProperty('')
-    
-    def welcome_message(self):
-        welcome_text = f"Merhaba {self.username}! Size nasıl yardımcı olabilirim?"
-        self.add_message(welcome_text, False, 0)
     
     def on_enter(self):
         # Load user data
         user_data = UserData.load_user()
         if user_data:
             self.username = user_data['username']
-            self.credits = user_data.get('credits', 50)
+            self.credits = user_data.get('total_credits', 50)
         
         Clock.schedule_once(lambda dt: self.focus_message_input())
         self.load_messages()
@@ -494,29 +635,31 @@ class ChatScreen(Screen):
     
     def focus_message_input(self):
         self.ids.message_input.focus = True
+        # Bind Enter key to send message
+        self.ids.message_input.bind(on_text_validate=self.send_message)
     
     def check_credits(self):
         if self.credits <= 10:
             self.add_message("Kredi miktarınız azalıyor! Daha fazla kredi satın almak ister misiniz?", False, 0)
         elif self.credits <= 0:
             self.add_message("Kredileriniz tükendi! Sohbete devam etmek için lütfen kredi satın alın.", False, 0)
-            Clock.schedule_once(lambda dt: self.show_buy_credits(), 1)
+            Clock.schedule_once(lambda dt: self.show_buy_credits(), 2)
     
-    def show_buy_credits(self):
-        if not os.path.exists('user_info.json'):
-            self.manager.current = 'user_info'
-        else:
-            self.manager.current = 'buy_credits'
+    def show_buy_credits(self, *args):
+        buy_credits_screen = self.manager.get_screen('buy_credits')
+        buy_credits_screen.warning_shown = True
+        self.manager.current = 'buy_credits'
     
-    def show_profile(self):
-        self.manager.current = 'profile'
+    def welcome_message(self):
+        welcome_text = f"Merhaba {self.username}! Size nasıl yardımcı olabilirim?"
+        self.add_message(welcome_text, False, 0)
     
     def load_messages(self):
         if os.path.exists('messages.json'):
             with open('messages.json', 'r', encoding='utf-8') as f:
                 messages = json.load(f)
                 for msg in messages:
-                    self.add_message(msg['text'], msg['is_user'])
+                    self.add_message(msg['text'], msg['is_user'], msg.get('cost', 0))
     
     def send_message(self, *args):
         message = self.ids.message_input.text.strip()
@@ -554,8 +697,7 @@ class ChatScreen(Screen):
         self.credits -= cost
         response = random.choice(response_data['responses'])
         
-        self.add_message(f"[Kullanılan kredi: {cost}]", False, cost)
-        Clock.schedule_once(lambda dt: self.add_message(response, False, 0), 0.5)
+        self.add_message(response, False, cost)
         
         self.save_credits()
         UserData.update_credits(self.credits)
@@ -569,6 +711,22 @@ class ChatScreen(Screen):
         }
         self.ids.chat_history.data.append(message)
         Clock.schedule_once(lambda dt: self.scroll_bottom())
+        
+        # Save message to file
+        if os.path.exists('messages.json'):
+            with open('messages.json', 'r', encoding='utf-8') as f:
+                messages = json.load(f)
+        else:
+            messages = []
+        
+        messages.append({
+            'text': text,
+            'is_user': is_user,
+            'cost': cost
+        })
+        
+        with open('messages.json', 'w', encoding='utf-8') as f:
+            json.dump(messages, f, ensure_ascii=False)
     
     def scroll_bottom(self):
         rv = self.ids.chat_history
@@ -594,14 +752,13 @@ class EchoaApp(App):
         
         sm = ScreenManager(transition=FadeTransition())
         sm.add_widget(WelcomeScreen(name='welcome'))
-        sm.add_widget(LoginScreen(name='login'))
+        sm.add_widget(UserInfoScreen(name='user_info'))
+        sm.add_widget(MenuScreen(name='menu'))
         sm.add_widget(ChatScreen(name='chat'))
-        sm.add_widget(ForgotPasswordScreen(name='forgot_password'))
-        sm.add_widget(VerificationScreen(name='verification'))
-        sm.add_widget(NewPasswordScreen(name='new_password'))
         sm.add_widget(ProfileScreen(name='profile'))
         sm.add_widget(BuyCreditsScreen(name='buy_credits'))
-        sm.add_widget(UserInfoScreen(name='user_info'))
+        sm.add_widget(ForgotPasswordScreen(name='forgot_password'))
+        sm.add_widget(VerificationScreen(name='verification'))
         return sm
 
 if __name__ == '__main__':

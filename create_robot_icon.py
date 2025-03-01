@@ -1,79 +1,72 @@
 from PIL import Image, ImageDraw
 import os
 
-def create_circle_icon(size, color, robot=False):
-    image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+def create_cute_robot():
+    # Create a new image with a transparent background
+    size = (200, 200)
+    image = Image.new('RGBA', size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     
-    # Draw the circle
-    draw.ellipse([0, 0, size-1, size-1], fill=color)
+    # Colors
+    primary_color = (76, 91, 224)  # Blue
+    secondary_color = (255, 255, 255)  # White
+    accent_color = (255, 200, 100)  # Light orange
     
-    if robot:
-        # Draw robot face
-        eye_color = (255, 255, 255)
-        eye_size = size // 6
-        eye_spacing = size // 4
-        eye_y = size * 0.35
-        
-        # Left eye
-        draw.ellipse([size//2 - eye_spacing - eye_size, eye_y,
-                     size//2 - eye_spacing + eye_size, eye_y + eye_size*2],
-                    fill=eye_color)
-        
-        # Right eye
-        draw.ellipse([size//2 + eye_spacing - eye_size, eye_y,
-                     size//2 + eye_spacing + eye_size, eye_y + eye_size*2],
-                    fill=eye_color)
-        
-        # Mouth
-        mouth_y = size * 0.65
-        mouth_width = size * 0.4
-        draw.rectangle([size//2 - mouth_width//2, mouth_y,
-                       size//2 + mouth_width//2, mouth_y + size//10],
-                      fill=eye_color)
-        
-        # Antenna
-        antenna_width = size // 20
-        draw.rectangle([size//2 - antenna_width//2, 0,
-                       size//2 + antenna_width//2, size//4],
-                      fill=eye_color)
-        draw.ellipse([size//2 - size//10, size//4 - size//10,
-                     size//2 + size//10, size//4 + size//10],
-                     fill=eye_color)
+    # Draw robot head (circle)
+    draw.ellipse([40, 40, 160, 160], fill=primary_color)
+    
+    # Draw eyes (cute circles)
+    draw.ellipse([70, 80, 90, 100], fill=secondary_color)
+    draw.ellipse([110, 80, 130, 100], fill=secondary_color)
+    
+    # Draw small pupils
+    draw.ellipse([75, 85, 85, 95], fill=accent_color)
+    draw.ellipse([115, 85, 125, 95], fill=accent_color)
+    
+    # Draw cute smile
+    draw.arc([80, 100, 120, 130], 0, 180, fill=secondary_color, width=3)
+    
+    # Draw antenna
+    draw.rectangle([95, 20, 105, 40], fill=primary_color)
+    draw.ellipse([90, 10, 110, 30], fill=accent_color)
     
     return image
 
 def create_logo():
-    # Create logo with robot face
-    logo = create_circle_icon(400, (76, 91, 224), robot=True)  # Modern blue color
-    logo.save('assets/logo.png')
-
-def create_avatars():
-    # Create user avatar (simple circle)
-    user = create_circle_icon(200, (76, 91, 224))  # Same blue as logo
-    user.save('assets/user.png')
+    # Create the logo
+    logo = create_cute_robot()
     
-    # Create bot avatar (circle with robot face)
-    bot = create_circle_icon(200, (76, 91, 224), robot=True)  # Same blue as logo
-    bot.save('assets/bot.png')
-    
-    # Create coin icon
-    coin = create_circle_icon(100, (255, 200, 50))  # Gold color
-    coin.save('assets/coin.png')
-    
-    # Create send icon
-    send = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(send)
-    
-    # Draw send arrow
-    points = [(20, 50), (80, 20), (80, 80)]
-    draw.polygon(points, fill=(255, 255, 255))
-    
-    send.save('assets/send.png')
-
-if __name__ == '__main__':
+    # Save the logo
     if not os.path.exists('assets'):
         os.makedirs('assets')
+    logo.save('assets/logo.png', 'PNG')
+
+def create_avatars():
+    # Create user and bot avatars
+    user_avatar = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+    bot_avatar = create_cute_robot()
+    bot_avatar = bot_avatar.resize((100, 100))
     
-    create_logo()
-    create_avatars() 
+    # Save avatars
+    if not os.path.exists('assets'):
+        os.makedirs('assets')
+    user_avatar.save('assets/user.png', 'PNG')
+    bot_avatar.save('assets/bot.png', 'PNG')
+    
+    # Create additional icons
+    send_icon = Image.new('RGBA', (50, 50), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(send_icon)
+    draw.polygon([(10, 25), (40, 25), (25, 40)], fill=(255, 255, 255))
+    send_icon.save('assets/send.png', 'PNG')
+    
+    back_icon = Image.new('RGBA', (50, 50), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(back_icon)
+    draw.polygon([(30, 10), (10, 25), (30, 40)], fill=(255, 255, 255))
+    back_icon.save('assets/back.png', 'PNG')
+    
+    # Create coin icon
+    coin_icon = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(coin_icon)
+    draw.ellipse([10, 10, 90, 90], fill=(255, 200, 50))
+    draw.ellipse([20, 20, 80, 80], fill=(255, 180, 0))
+    coin_icon.save('assets/coin.png', 'PNG') 
